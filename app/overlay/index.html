@@ -1,0 +1,27 @@
+<!DOCTYPE html><html><head><meta charSet="utf-8"/><meta name="viewport" content="width=device-width"/><title>쿠콘팡 - 오버레이</title><meta name="next-head-count" content="3"/><link rel="preload" href="/_next/static/css/21194d6d05b5988f.css" as="style"/><link rel="stylesheet" href="/_next/static/css/21194d6d05b5988f.css" data-n-g=""/><noscript data-n-css=""></noscript><script defer="" nomodule="" src="/_next/static/chunks/polyfills-42372ed130431b0a.js"></script><script src="/_next/static/chunks/webpack-ee7e63bc15b31913.js" defer=""></script><script src="/_next/static/chunks/framework-14efab3c3d1ed63b.js" defer=""></script><script src="/_next/static/chunks/main-48991dcae9e9b72b.js" defer=""></script><script src="/_next/static/chunks/pages/_app-5445293692012ceb.js" defer=""></script><script src="/_next/static/chunks/pages/overlay-7dcda97df6305638.js" defer=""></script><script src="/_next/static/apWbjyuOhEZ2fJ9VFr1ju/_buildManifest.js" defer=""></script><script src="/_next/static/apWbjyuOhEZ2fJ9VFr1ju/_ssgManifest.js" defer=""></script></head><body><div id="__next"><div class="relative w-screen h-screen overflow-hidden transparent pointer-events-none"></div><style>
+        body {
+          background: transparent !important;
+          margin: 0;
+          overflow: hidden;
+        }
+        @keyframes popcorn {
+          0% {
+            transform: translate(0, 50px) scale(0);
+            opacity: 0;
+          }
+          20% {
+            opacity: 1;
+          }
+          60% {
+            opacity: 1;
+            transform: translate(var(--tx), var(--ty)) rotate(var(--tr)) scale(1.2);
+          }
+          100% {
+            transform: translate(calc(var(--tx) * 1.2), calc(var(--ty) + 200px)) rotate(calc(var(--tr) * 1.5)) scale(0);
+            opacity: 0;
+          }
+        }
+        .animate-popcorn {
+          animation: popcorn 3.5s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards;
+        }
+      </style></div><script id="__NEXT_DATA__" type="application/json">{"props":{"pageProps":{}},"page":"/overlay","query":{},"buildId":"apWbjyuOhEZ2fJ9VFr1ju","nextExport":true,"autoExport":true,"isFallback":false,"scriptLoader":[]}</script></body></html>
