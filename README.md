@@ -30,16 +30,17 @@ Windows 환경에서 `npm run build` 시 "Cannot create symbolic link" 오류가
 
 ### 1. 발신부 (Sender)
 - **전용 단축키**: `Alt + S`를 눌러 어디서든 즉시 발송창을 호출합니다.
+- **📍 오늘의 소식 이력**: 발송창 하단에서 오늘 하루 동안 터진 즐거운 소식들을 실시간으로 확인합니다.
 - **익명 투척**: '익명의 요정' 모드를 켜서 수줍게 소식을 전할 수 있습니다.
 - **간결한 입력**: 최대 50자의 텍스트로 핵심만 빠르게 전달합니다.
 
 ### 2. 수신부 (Receiver)
 - **실시간 폭죽 쇼**: 화면 하단에서 🎉, 🎊, ✨, 🍕 등 다양한 이모지들이 3초간 팝콘처럼 튀어 오릅니다.
-- **트레이 아이콘**: 소식이 도착하면 트레이 아이콘이 생동감 있게 반응합니다.
+- **🔕 방해 금지 모드 (DND)**: 업무에 집중해야 할 땐 트레이 메뉴에서 알림과 폭죽을 잠시 끌 수 있습니다.
 - **네이티브 알림**: 윈도우/macOS 시스템 알림을 통해 메시지 내용을 즉시 확인합니다.
 
 ### 3. 시스템 최적화
-- **상주 모드**: 시스템 트레이에 최소한의 리소스로 상주합니다.
+- **중복 알림 방지**: 앱을 새로 켤 때 과거의 메시지가 다시 알림으로 뜨지 않도록 스마트하게 필터링합니다.
 - **투명 오버레이**: 폭죽이 터지는 동안에도 뒤쪽 화면 클릭 및 작업이 가능합니다.
 - **자동 실행**: PC 부팅 시 자동으로 실행되어 중요한 소식을 놓치지 않게 도와줍니다.
 
@@ -84,23 +85,28 @@ npm run build
 
 ---
 
-## � 커스텀 가이드
+## 🛠 프로젝트 구조 및 커스텀
+
+### 📂 주요 경로
+- `main/`: Electron 메인 프로세스 (트레이, 단축키, DND 상태 관리)
+- `renderer/`: Next.js 기반 UI 프로세스 (발송창, 폭죽 오버레이)
+- `renderer/lib/`: Firebase 연동 로직
+- `resources/`: 앱 아이콘(`.ico`) 및 빌드 리소스
 
 ### 🎨 앱 아이콘 변경하기
-1. `resources` 폴더 안에 있는 `icon.ico` (Windows용) 파일을 원하는 아이콘으로 교체하세요.
-2. `renderer/public/images/logo-icon.png` 파일을 교체하면 앱 내부의 로고도 변경됩니다.
+1. `resources` 폴더 안에 있는 `icon.ico` 파일을 원하는 아이콘으로 교체하세요.
+2. `renderer/public/images/logo-icon.png` 파일을 교체하면 앱 내부 로고도 변경됩니다.
 
 ### ⌨️ 단축키 변경
 - `main/background.ts` 파일의 `globalShortcut.register('Alt+S', ...)` 부분의 `'Alt+S'`를 원하는 키 조합으로 수정하세요.
-- `main/`: Electron 메인 프로세스 (트레이, 단축키, 윈도우 관리)
-- `renderer/`: Next.js 기반 UI 프로세스 (발신창, 폭죽 오버레이)
-- `renderer/lib/`: Firebase 및 공통 라이브러리 설정
-- `resources/`: 앱 아이콘 및 정적 자산
 
 ---
 
-## 💡 팁
-- **단축키 변경**: `main/background.ts` 파일에서 `globalShortcut.register` 부분을 수정하여 원하는 단축키로 변경할 수 있습니다.
-- **폭죽 커스텀**: `renderer/pages/overlay.tsx`의 `EMOJIS` 배열에 원하는 이모지를 추가해 보세요!
+## 💾 원격 저장소 연결 (Git)
+프로젝트를 GitHub에 올리려면 다음 명령어를 참고하세요.
+```bash
+git remote add origin https://github.com/사용자계정/coocon-pang.git
+git push -u origin main
+```
 
 **쿠콘팡과 함께 더 즐거운 오피스 라이프를 만들어보세요! 🚀**
