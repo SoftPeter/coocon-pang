@@ -62,7 +62,10 @@ let isMuted = false
     }
 
     // 3. 시스템 트레이 초기화
-    const iconPath = path.join(__dirname, '../renderer/public/images/logo-icon.png')
+    const iconPath = isProd
+      ? path.join(process.resourcesPath, 'tray-icon.png')
+      : path.join(__dirname, '../renderer/public/images/logo-icon.png')
+
     const icon = nativeImage.createFromPath(iconPath).resize({ width: 16, height: 16 })
     tray = new Tray(icon)
     const contextMenu = Menu.buildFromTemplate([

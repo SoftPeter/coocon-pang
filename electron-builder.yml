@@ -15,4 +15,7 @@ win:
 nsis:
   oneClick: true
   allowToChangeInstallationDirectory: false
+extraResources:
+  - from: renderer/public/images/logo-icon.png
+    to: tray-icon.png
 publish: null
