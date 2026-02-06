@@ -95,13 +95,17 @@ let isMuted = false
       }
     })
 
+    // 5. 윈도우 파괴 시 참조 해제 로직 추가 (핫픽스)
+    mainWindow.on('closed', () => { mainWindow = null })
+    overlayWindow.on('closed', () => { overlayWindow = null })
+
     // 자동 실행 기본 설정
     app.setLoginItemSettings({ openAtLogin: true })
 
   })()
 
 function showSender() {
-  if (mainWindow) {
+  if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.show()
     mainWindow.center()
     mainWindow.focus()
@@ -111,38 +115,56 @@ function showSender() {
 // 팡! 이벤트 수신 시 (IPC로 수신부에서 메인으로 알림)
 ipcMain.on('trigger-pang', (event, data) => {
   if (isMuted) return // DND 모드면 아무것도 하지 않음
+  if (!data) return // 방어적 코드
 
-  // Phase 1: Tray Update
+  // Phase 1: Tray Update (생략 가능하나 구조 유지)
   if (tray) {
-    const pangIcon = path.join(__dirname, '../renderer/public/images/logo-icon.png') // TODO: 🎉 이모지 아이콘으로 변경 로직
-    // tray.setImage(...) 
+    // tray 관련 로직
   }
 
-  // Phase 2: Show Overlay & Fireworks
-  if (overlayWindow) {
-    overlayWindow.show()
-    overlayWindow.webContents.send('start-fireworks', data)
-    setTimeout(() => {
-      overlayWindow.hide()
-    }, 4500) // 애니메이션 시간에 맞춰 조정
+  // Phase 2: Show Overlay & Fireworks - 핫픽스 적용 (안전한 접근)
+  if (overlayWindow && !overlayWindow.isDestroyed()) {
+    try {
+      overlayWindow.show()
+      if (overlayWindow.webContents && !overlayWindow.webContents.isDestroyed()) {
+        overlayWindow.webContents.send('start-fireworks', data)
+      }
+
+      // 예약된 작업도 안전하게 처리
+      const timerId = setTimeout(() => {
+        if (overlayWindow && !overlayWindow.isDestroyed()) {
+          overlayWindow.hide()
+        }
+      }, 4500)
+    } catch (e) {
+      console.error('Error in overlay animation:', e)
+    }
   }
 
-  // Phase 3: Native Notification
-  const title = data.isAnonymous
-    ? '🧚 [쿠콘팡] 익명의 소식'
-    : `📣 [쿠콘팡] ${data.sender}님의 소식!`
+  // Phase 3: Native Notification - 핫픽스 적용 (객체 생명주기 관리)
+  try {
+    const title = data.isAnonymous
+      ? '🧚 [쿠콘팡] 익명의 소식'
+      : `📣 [쿠콘팡] ${data.sender || '동료'}님의 소식!`
 
-  const notification = new Notification({
-    title,
-    body: data.text,
-    silent: false,
-  })
-  notification.show()
+    const notification = new Notification({
+      title,
+      body: data.text || '',
+      silent: false,
+    })
 
-  // 5초 뒤 자동 닫기 요청
-  setTimeout(() => {
-    notification.close()
-  }, 5000)
+    notification.show()
+
+    // 5초 뒤 자동 닫기 요청 (안전한 정리)
+    const notificationTimer = setTimeout(() => {
+      // Notification 객체는 close() 시 에러가 잘 안 나지만 방어적으로 처리
+      try {
+        notification.close()
+      } catch (e) { }
+    }, 5000)
+  } catch (e) {
+    console.error('Error showing notification:', e)
+  }
 })
 
 ipcMain.handle('get-username', () => {
@@ -150,13 +172,13 @@ ipcMain.handle('get-username', () => {
 })
 
 ipcMain.on('hide-sender', () => {
-  if (mainWindow) mainWindow.hide()
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.hide()
+  }
 })
 
 app.on('window-all-closed', () => {
-  app.quit()
-})
-
-ipcMain.on('message', async (event, arg) => {
-  event.reply('message', `${arg} World!`)
+  if (process.platform !== 'darwin') {
+    app.quit()
+  }
 })

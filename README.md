@@ -115,6 +115,12 @@ git push -u origin main
 
 ## 📜 버전 히스토리
 
+### v1.0.3 (2026-02-06)
+- **[HOTFIX] 메인 프로세스 안정화**:
+    - `TypeError: Object has been destroyed` 크래시 수정.
+    - 모든 윈도우 객체(BrowserWindow) 접근 전 `isDestroyed()` 검증 로직 추가.
+    - 윈도우 생명주기에 따른 참조 해제(nullify) 및 `setTimeout` 안전장치 마련.
+
 ### v1.0.2 (2026-02-06)
 - **이모지 장착실 UX 정밀 고도화**:
     - **스마트 세션 관리**: 픽커 오픈 시 추천 이모지 세트(최대 5개) 최초 1회 자동 장착.
