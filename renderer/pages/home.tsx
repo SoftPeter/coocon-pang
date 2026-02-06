@@ -32,6 +32,7 @@ export default function HomePage() {
   // Emoji States
   const [selectedEmojis, setSelectedEmojis] = useState<string[]>([])
   const [showEmojiPicker, setShowEmojiPicker] = useState(false)
+  const [hasAutoSelected, setHasAutoSelected] = useState(false) // 자동 장착 완료 여부
   const recommendation = getTodayRecommendation()
   const pickerRef = useRef<HTMLDivElement>(null)
 
@@ -132,6 +133,7 @@ export default function HomePage() {
       })
       setText('')
       setSelectedEmojis([]) // 발송 후 초기화
+      setHasAutoSelected(false) // 다음 발송 시 다시 추천받을 수 있도록 리셋
       window.ipc.send('hide-sender', null)
     } catch (error) {
       console.error('Error sending message:', error)
@@ -140,25 +142,39 @@ export default function HomePage() {
 
   const toggleEmoji = (emoji: string) => {
     setSelectedEmojis(prev => {
+      // 1. 이미 있으면 제거 (0개까지 가능하도록 제약 없음)
       if (prev.includes(emoji)) return prev.filter(e => e !== emoji)
-      if (prev.length >= 5) return prev
+
+      // 2. 꽉 찬 상태(5개)에서 추가 시, 첫 번째(가장 오래된) 것 제거하고 뒤에 추가 (FIFO)
+      if (prev.length >= 5) {
+        return [...prev.slice(1), emoji]
+      }
+
+      // 3. 여유 있으면 추가
       return [...prev, emoji]
     })
+  }
+
+  const clearEmojis = () => {
+    setSelectedEmojis([])
+    setHasAutoSelected(true) // 사용자가 명시적으로 비웠으므로 더 이상 자동 개입 안함
   }
 
   const applyRecommendation = () => {
     if (recommendation) {
       setSelectedEmojis([...recommendation.emojis.slice(0, 5)])
-      setShowEmojiPicker(false)
+      setHasAutoSelected(true)
     }
   }
 
   useEffect(() => {
-    // 기념일 자동 선택: 픽커가 열릴 때 선택된 게 없으면 추천 세트 전체 자동 장착
-    if (showEmojiPicker && selectedEmojis.length === 0 && recommendation) {
+    // 기념일 자동 선택: 픽커가 열릴 때만 최초 1회 자동 장착 (사용자가 명시적으로 수정한 적 없을 때)
+    if (showEmojiPicker && !hasAutoSelected && selectedEmojis.length === 0 && recommendation) {
       setSelectedEmojis([...recommendation.emojis.slice(0, 5)])
+      setHasAutoSelected(true)
     }
-  }, [showEmojiPicker, recommendation])
+    // 픽커가 닫힐 때 초기화하지 않고, 발송 후에만 초기화하여 세션 유지
+  }, [showEmojiPicker, recommendation, hasAutoSelected])
 
   const formatDateLabel = (ts: number) => {
     const date = new Date(ts)
@@ -216,7 +232,7 @@ export default function HomePage() {
           />
 
           {/* 선택된 이모지 장착 UI - 입력창 내부 하단 왼쪽 */}
-          <div className="absolute left-3 bottom-3 flex gap-1.5 z-20">
+          <div className="absolute left-3 bottom-3 flex items-center gap-1.5 z-20">
             {selectedEmojis.map((e, i) => (
               <span
                 key={i}
@@ -228,8 +244,17 @@ export default function HomePage() {
                 <div className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 text-white text-[7px] rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity font-bold">✕</div>
               </span>
             ))}
+            {selectedEmojis.length > 0 && (
+              <button
+                onClick={(e) => { e.stopPropagation(); clearEmojis(); }}
+                className="text-[10px] text-gray-400 hover:text-red-500 font-bold ml-1 bg-white/50 px-1 rounded hover:bg-red-50 transition-all"
+                title="모두 해제"
+              >
+                비우기
+              </button>
+            )}
             {selectedEmojis.length === 0 && (
-              <span className="text-[10px] text-gray-300 italic self-center">이모지가 여기에 장착됩니다</span>
+              <span className="text-[10px] text-gray-300 italic self-center">이모지 미선택 시 랜덤 발송🎲</span>
             )}
           </div>
 
@@ -245,16 +270,25 @@ export default function HomePage() {
           {/* Emoji Picker Popover - 입력창 하단(아래)으로 고정 배치 */}
           {showEmojiPicker && (
             <div ref={pickerRef} className="absolute left-0 right-0 top-full mt-2 bg-white border-2 border-[#36A3D1] rounded-2xl shadow-[0_20px_60px_rgba(0,0,0,0.6)] z-50 p-4 animate-fade-in-up flex flex-col overflow-hidden h-[300px]">
-              {/* 상단: 타이틀 및 닫기 버튼 */}
+              {/* 상단: 타이틀 및 닫기/해제 버튼 */}
               <div className="flex justify-between items-center mb-3 pb-2 border-b border-gray-50 shrink-0">
-                <span className="text-xs font-black text-[#00479B] flex items-center gap-1.5 uppercase tracking-tighter">🚀 발사 이모지 장착실</span>
-                <button
-                  onClick={(e) => { e.stopPropagation(); setShowEmojiPicker(false); }}
-                  className="w-7 h-7 flex items-center justify-center rounded-full hover:bg-red-50 text-gray-400 hover:text-red-500 transition-all font-bold text-base"
-                  title="닫기 (Esc)"
-                >
-                  ✕
-                </button>
+                <span className="text-xs font-black text-[#00479B] flex items-center gap-1.5 uppercase tracking-tighter cursor-default">🚀 발사 이모지 장착실</span>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={clearEmojis}
+                    className="text-[10px] font-bold text-red-500 hover:text-red-700 bg-red-50 px-2 py-1 rounded transition-colors active:scale-95"
+                    title="장착된 모든 이모지 해제"
+                  >
+                    전체 해제 🗑️
+                  </button>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); setShowEmojiPicker(false); }}
+                    className="w-7 h-7 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-400 hover:text-gray-900 transition-all font-bold text-base"
+                    title="닫기 (Esc)"
+                  >
+                    ✕
+                  </button>
+                </div>
               </div>
 
               {/* 중단: 탐색 영역 (메인 그리드 + 내부 스크롤) */}
@@ -297,6 +331,9 @@ export default function HomePage() {
                     </button>
                   ))}
                 </div>
+              </div>
+              <div className="mt-2 text-[9px] text-gray-300 text-center font-bold tracking-tight">
+                * 꽉 찬 상태에서 클릭 시 가장 오래된 이모지부터 교체됩니다.
               </div>
             </div>
           )}
