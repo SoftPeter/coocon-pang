@@ -88,7 +88,11 @@ let isMuted = false
 
     // 4. 글로벌 단축키 등록
     globalShortcut.register('Alt+S', () => {
-      showSender()
+      if (mainWindow && mainWindow.isVisible() && mainWindow.isFocused()) {
+        mainWindow.hide()
+      } else {
+        showSender()
+      }
     })
 
     // 자동 실행 기본 설정
