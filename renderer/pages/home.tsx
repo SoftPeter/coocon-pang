@@ -1,7 +1,25 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import Head from 'next/head'
 import { db } from '../lib/firebase'
 import { ref, push, onChildAdded, serverTimestamp, query, orderByChild, startAt, endAt, get, limitToLast } from 'firebase/database'
+import { getTodayRecommendation } from '../utils/dateHelper'
+
+const COMMON_EMOJIS = [
+  // 축하/파티/행사
+  '🎉', '🎊', '✨', '🥳', '🎈', '🎆', '🎀', '🎁', '🎂', '🥂',
+  '🎇', '💎', '🕯️', '🧿', '🏮', '🎐', '🧧', '🎠', '🎡', '🎢',
+  // 감정/사랑/열정
+  '😊', '😍', '🥰', '😂', '🔥', '👍', '❤️', '💯', '🙌', '🌟',
+  '😎', '🤩', '😘', '🌈', '🍀', '🍬', '🍭', '💡', '🎵', '💪',
+  '🦋', '🌸', '☀️', '🌕', '🌠', '🛸', '👻', '🧜‍♀️', '🦄', '🧚‍♀️',
+  // 음식/카페/간식
+  '🍔', '🍕', '🍗', '🌭', '🥗', '🍩', '🍰', '🧁', '🍦', '🍪',
+  '☕', '🥤', '🍺', '🍻', '🍷', '🍹', '🍎', '🍓', '🍇', '🍉',
+  '🥪', '🌮', '🍜', '🍣', '🍤', '🍱', '🥞', '🧇', '🧀', '🥨',
+  // 업무/생산성/기기
+  '💻', '✅', '🚨', '🕒', '📅', '📝', '📢', '🚀', '⚡', '🏹',
+  '🟢', '🔵', '🟠', '👑', '🏆', '🥇', '🥈', '🥉', '🔔', '📌'
+]
 
 export default function HomePage() {
   const [text, setText] = useState('')
@@ -9,43 +27,30 @@ export default function HomePage() {
   const [isAnonymous, setIsAnonymous] = useState(false)
   const [userName, setUserName] = useState('동료님')
   const [history, setHistory] = useState<any[]>([])
-  const [mountTime] = useState(Date.now()) // 앱 실행 시점 기록
+  const [mountTime] = useState(Date.now())
+
+  // Emoji States
+  const [selectedEmojis, setSelectedEmojis] = useState<string[]>([])
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false)
+  const recommendation = getTodayRecommendation()
+  const pickerRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
-    // 1. 로컬 스토리지 데이터 복구
-    try {
-      const savedNickname = localStorage.getItem('coocon-pang-nickname')
-      if (savedNickname) setNickname(savedNickname)
-    } catch (e) { console.error(e) }
-
-    // 2. 시스템 사용자명 가져오기
-    const fetchUser = async () => {
+    // 1. 초기 데이터 로드 (1회성)
+    const init = async () => {
       try {
+        const savedNickname = localStorage.getItem('coocon-pang-nickname')
+        if (savedNickname) setNickname(savedNickname)
+
         const name = await window.ipc.invoke('get-username')
         if (name) setUserName(name)
-      } catch (err) {
-        console.error('Failed to get username', err)
-      }
-    }
-    fetchUser()
 
-    // 3. 1주일치 이력 데이터 로드
-    const loadHistory = async () => {
-      try {
         const today = new Date()
-        // 7일 전 00:00:00
         const sevenDaysAgo = new Date(today.getFullYear(), today.getMonth(), today.getDate() - 6).getTime()
         const endOfToday = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 23, 59, 59, 999).getTime()
 
         const pangRef = ref(db, 'pang_events')
-        const historyQuery = query(
-          pangRef,
-          orderByChild('timestamp'),
-          startAt(sevenDaysAgo),
-          endAt(endOfToday),
-          limitToLast(100) // 넉넉하게 최근 100개
-        )
-
+        const historyQuery = query(pangRef, orderByChild('timestamp'), startAt(sevenDaysAgo), endAt(endOfToday), limitToLast(100))
         const snapshot = await get(historyQuery)
         if (snapshot.exists()) {
           const data = snapshot.val()
@@ -54,24 +59,19 @@ export default function HomePage() {
             setHistory(list)
           }
         }
-      } catch (err) {
-        console.error('History load error:', err)
-      }
+      } catch (err) { console.error(err) }
     }
-    loadHistory()
+    init()
 
-    // 4. 실시간 리스너
+    // 2. 실시간 리스너 (1회성 등록)
     const pangRef = ref(db, 'pang_events')
     const unsubscribe = onChildAdded(pangRef, (snapshot) => {
       try {
         const data = snapshot.val()
-        if (data) {
-          // 알림 트리거: 앱 실행 시점(mountTime) 이후에 생성된 새로운 데이터만 알림
-          if (data.timestamp && data.timestamp > mountTime) {
-            window.ipc.send('trigger-pang', data)
-          }
-
-          // 이력 업데이트 (7일 이내 데이터인 경우 리스트에 추가)
+        if (data && data.timestamp && data.timestamp > mountTime) {
+          window.ipc.send('trigger-pang', data)
+        }
+        if (data && data.timestamp) {
           const today = new Date()
           const sevenDaysAgo = new Date(today.getFullYear(), today.getMonth(), today.getDate() - 6).getTime()
           if (data.timestamp >= sevenDaysAgo) {
@@ -84,19 +84,35 @@ export default function HomePage() {
       } catch (err) { console.error(err) }
     })
 
-    // 5. 전역 Esc 키 리스너
+    return () => unsubscribe()
+  }, [mountTime])
+
+  useEffect(() => {
+    // 3. 키보드 및 마우스 이벤트 (단계적 종료 로직)
     const handleGlobalKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
-        window.ipc.send('hide-sender', null)
+        if (showEmojiPicker) {
+          // 1단계: 픽커만 종료
+          setShowEmojiPicker(false)
+        } else {
+          // 2단계: 전체 창 종료
+          window.ipc.send('hide-sender', null)
+        }
       }
     }
-    window.addEventListener('keydown', handleGlobalKeyDown)
-
-    return () => {
-      unsubscribe()
-      window.removeEventListener('keydown', handleGlobalKeyDown)
+    const handleClickOutside = (e: MouseEvent) => {
+      if (pickerRef.current && !pickerRef.current.contains(e.target as Node)) {
+        setShowEmojiPicker(false)
+      }
     }
-  }, [])
+
+    window.addEventListener('keydown', handleGlobalKeyDown)
+    window.addEventListener('mousedown', handleClickOutside)
+    return () => {
+      window.removeEventListener('keydown', handleGlobalKeyDown)
+      window.removeEventListener('mousedown', handleClickOutside)
+    }
+  }, [showEmojiPicker])
 
   const handleSend = async () => {
     if (!text.trim()) return
@@ -112,37 +128,44 @@ export default function HomePage() {
         sender: isAnonymous ? '익명의 요정' : `${nickname || '익명'}(${userName})`,
         isAnonymous,
         timestamp: serverTimestamp(),
+        emojis: selectedEmojis.length > 0 ? selectedEmojis : null // 선택 없으면 null (수신측에서 스마트 디폴트 처리)
       })
       setText('')
+      setSelectedEmojis([]) // 발송 후 초기화
       window.ipc.send('hide-sender', null)
     } catch (error) {
       console.error('Error sending message:', error)
     }
   }
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault()
-      handleSend()
+  const toggleEmoji = (emoji: string) => {
+    setSelectedEmojis(prev => {
+      if (prev.includes(emoji)) return prev.filter(e => e !== emoji)
+      if (prev.length >= 5) return prev
+      return [...prev, emoji]
+    })
+  }
+
+  const applyRecommendation = () => {
+    if (recommendation) {
+      setSelectedEmojis([...recommendation.emojis.slice(0, 5)])
+      setShowEmojiPicker(false)
     }
   }
 
-  const formatTime = (ts: number | any) => {
-    if (!ts) return ''
-    const date = new Date(ts)
-    return date.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false })
-  }
+  useEffect(() => {
+    // 기념일 자동 선택: 픽커가 열릴 때 선택된 게 없으면 추천 세트 전체 자동 장착
+    if (showEmojiPicker && selectedEmojis.length === 0 && recommendation) {
+      setSelectedEmojis([...recommendation.emojis.slice(0, 5)])
+    }
+  }, [showEmojiPicker, recommendation])
 
   const formatDateLabel = (ts: number) => {
     const date = new Date(ts)
     const today = new Date()
-    const isToday = date.toDateString() === today.toDateString()
-
-    if (isToday) return '오늘'
-    return `${date.getMonth() + 1}월 ${date.getDate()}일`
+    return date.toDateString() === today.toDateString() ? '오늘' : `${date.getMonth() + 1}월 ${date.getDate()}일`
   }
 
-  // 이력을 날짜별로 그룹화
   const groupedHistory = history.reduce((acc: any, item: any) => {
     const dateKey = new Date(item.timestamp).toDateString()
     if (!acc[dateKey]) acc[dateKey] = []
@@ -155,24 +178,18 @@ export default function HomePage() {
       <Head>
         <title>쿠콘팡 - 메시지 보내기</title>
       </Head>
-      <div className="flex flex-col h-screen bg-[#F7F9FC] border-2 border-[#00479B] p-4 rounded-lg overflow-hidden shadow-2xl">
+      <div className="flex flex-col h-screen bg-[#F7F9FC] border-2 border-[#00479B] p-4 rounded-lg overflow-hidden shadow-2xl relative font-sans">
         {/* Header */}
         <div className="flex justify-between items-center mb-3">
           <div className="flex items-center gap-2">
             <img src="/images/logo-icon.png" alt="Logo" className="w-6 h-6" />
-            <span className="font-bold text-[#00479B]">쿠콘팡! 소식 쏘기</span>
+            <span className="font-bold text-[#00479B] tracking-tight text-base">쿠콘팡! 소식 쏘기</span>
           </div>
-          <button
-            onClick={() => window.ipc.send('hide-sender', null)}
-            className="w-6 h-6 flex items-center justify-center rounded-full hover:bg-gray-200 text-gray-400 transition-colors"
-            title="창 닫기 (Esc)"
-          >
-            ✕
-          </button>
+          <button onClick={() => window.ipc.send('hide-sender', null)} className="w-6 h-6 flex items-center justify-center rounded-full hover:bg-gray-200 text-gray-400 transition-colors">✕</button>
         </div>
 
-        {/* Sender Info */}
-        <div className="flex items-center gap-2 mb-3">
+        {/* Sender Info - 고정 위치 */}
+        <div className="flex items-center gap-2 mb-3 shrink-0">
           <span className="text-xs font-semibold text-gray-500 w-12 shrink-0">보내는 이</span>
           <input
             type="text"
@@ -185,45 +202,118 @@ export default function HomePage() {
           <span className="text-[10px] text-gray-400 shrink-0">({userName})</span>
         </div>
 
-        {/* Message Input */}
-        <textarea
-          autoFocus
-          className={`h-28 w-full p-3 border rounded-md focus:outline-none focus:ring-2 transition-all resize-none text-sm text-gray-900 bg-white shadow-inner ${isAnonymous ? 'border-purple-300 focus:ring-purple-400' : 'border-gray-200 focus:ring-[#36A3D1]'
-            }`}
-          placeholder={isAnonymous ? "익명의 요정이 되어 소식을 전해보세요!" : "나누고 싶은 기쁜 소식을 적어주세요! (최대 50자)"}
-          maxLength={50}
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          onKeyDown={handleKeyDown}
-        />
+        {/* Message Area - 입력창 고정 및 내부 장착 UI */}
+        <div className="relative mb-4 shrink-0 overflow-visible">
+          <textarea
+            autoFocus
+            className={`h-24 w-full p-4 pr-12 pb-10 border rounded-xl focus:outline-none focus:ring-2 transition-all resize-none text-[13px] text-gray-900 bg-white shadow-inner ${isAnonymous ? 'border-purple-300 focus:ring-purple-400' : 'border-gray-200 focus:ring-[#36A3D1]'
+              }`}
+            placeholder={isAnonymous ? "익명의 요정이 되어 소식을 전해보세요!" : "나누고 싶은 기쁜 소식을 적어주세요! (최대 50자)"}
+            maxLength={50}
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && (e.preventDefault(), handleSend())}
+          />
 
-        {/* Actions */}
-        <div className="flex justify-between items-center mt-3 mb-4">
+          {/* 선택된 이모지 장착 UI - 입력창 내부 하단 왼쪽 */}
+          <div className="absolute left-3 bottom-3 flex gap-1.5 z-20">
+            {selectedEmojis.map((e, i) => (
+              <span
+                key={i}
+                onClick={() => toggleEmoji(e)}
+                className="w-7 h-7 flex items-center justify-center bg-blue-50/80 backdrop-blur-sm border border-blue-100 rounded-lg text-sm shadow-sm hover:border-red-400 hover:bg-red-50 cursor-pointer transition-all active:scale-90 group relative"
+                title="제거하려면 클릭"
+              >
+                {e}
+                <div className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 text-white text-[7px] rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity font-bold">✕</div>
+              </span>
+            ))}
+            {selectedEmojis.length === 0 && (
+              <span className="text-[10px] text-gray-300 italic self-center">이모지가 여기에 장착됩니다</span>
+            )}
+          </div>
+
+          {/* Emoji Trigger Button - 입력창 내부 하단 오른쪽 */}
+          <button
+            onClick={() => setShowEmojiPicker(!showEmojiPicker)}
+            className="absolute right-3 bottom-3 text-lg hover:scale-110 transition-transform p-1.5 rounded-full hover:bg-gray-100 shadow-sm border border-gray-100 bg-white z-20"
+            title="이모지 선택"
+          >
+            {selectedEmojis.length > 0 ? selectedEmojis[0] : '😊'}
+          </button>
+
+          {/* Emoji Picker Popover - 입력창 하단(아래)으로 고정 배치 */}
+          {showEmojiPicker && (
+            <div ref={pickerRef} className="absolute left-0 right-0 top-full mt-2 bg-white border-2 border-[#36A3D1] rounded-2xl shadow-[0_20px_60px_rgba(0,0,0,0.6)] z-50 p-4 animate-fade-in-up flex flex-col overflow-hidden h-[300px]">
+              {/* 상단: 타이틀 및 닫기 버튼 */}
+              <div className="flex justify-between items-center mb-3 pb-2 border-b border-gray-50 shrink-0">
+                <span className="text-xs font-black text-[#00479B] flex items-center gap-1.5 uppercase tracking-tighter">🚀 발사 이모지 장착실</span>
+                <button
+                  onClick={(e) => { e.stopPropagation(); setShowEmojiPicker(false); }}
+                  className="w-7 h-7 flex items-center justify-center rounded-full hover:bg-red-50 text-gray-400 hover:text-red-500 transition-all font-bold text-base"
+                  title="닫기 (Esc)"
+                >
+                  ✕
+                </button>
+              </div>
+
+              {/* 중단: 탐색 영역 (메인 그리드 + 내부 스크롤) */}
+              <div className="flex-1 overflow-y-auto custom-scrollbar pr-1">
+                {/* 스마트 추천 섹션 - 슬림형 */}
+                {recommendation && (
+                  <div className="mb-4 p-3 bg-gradient-to-r from-blue-50/50 to-white rounded-xl border border-blue-100 shadow-sm shrink-0">
+                    <div className="flex items-center justify-between mb-2 px-0.5">
+                      <span className="text-[10px] font-black text-[#00479B]">✨ {recommendation.dateLabel} 추천</span>
+                      <button
+                        onClick={applyRecommendation}
+                        className="text-[8px] bg-[#00479B] text-white px-2 py-1 rounded hover:bg-blue-800 font-bold shadow-sm transition-all shadow-blue-900/20"
+                      >
+                        세트 장착⚡
+                      </button>
+                    </div>
+                    <div className="flex gap-4 justify-center">
+                      {recommendation.emojis.map(e => (
+                        <button
+                          key={e}
+                          onClick={() => toggleEmoji(e)}
+                          className={`text-2xl hover:scale-125 transition-all outline-none ${selectedEmojis.includes(e) ? 'filter drop-shadow-md brightness-110 scale-110 ring-2 ring-blue-400 rounded-full' : 'grayscale-[0.5] opacity-20 hover:opacity-100'}`}
+                        >
+                          {e}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* 데이터 정제 완료된 풍성한 그리드 */}
+                <div className="grid grid-cols-8 gap-1.5 p-0.5 pb-4">
+                  {COMMON_EMOJIS.map((e, idx) => (
+                    <button
+                      key={`${e}-${idx}`}
+                      onClick={() => toggleEmoji(e)}
+                      className={`text-[17px] hover:scale-125 transition-all text-center rounded-lg flex items-center justify-center aspect-square shadow-sm border-2 ${selectedEmojis.includes(e) ? 'bg-blue-50 border-blue-500 shadow-md scale-105' : 'bg-white border-gray-50 hover:border-blue-200'}`}
+                    >
+                      {e}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Footer Actions */}
+        <div className="flex justify-between items-center mb-4">
           <label className="flex items-center gap-2 cursor-pointer text-xs text-gray-600 select-none">
-            <input
-              type="checkbox"
-              checked={isAnonymous}
-              onChange={(e) => setIsAnonymous(e.target.checked)}
-              className="accent-purple-500 w-4 h-4"
-            />
+            <input type="checkbox" checked={isAnonymous} onChange={(e) => setIsAnonymous(e.target.checked)} className="accent-purple-500 w-4 h-4" />
             익명으로 쏘기
           </label>
-          <button
-            onClick={handleSend}
-            style={{
-              backgroundColor: isAnonymous ? '#9333ea' : '#00479B',
-              color: '#ffffff',
-              display: 'inline-block',
-              width: 'auto',
-              minWidth: '120px'
-            }}
-            className="px-8 py-2 rounded-md font-bold text-sm transition-all shadow-md active:scale-95 text-white"
-          >
+          <button onClick={handleSend} style={{ backgroundColor: isAnonymous ? '#9333ea' : '#00479B', color: '#ffffff', minWidth: '120px' }} className="px-8 py-2 rounded-md font-bold text-sm transition-all shadow-md active:scale-95 text-white">
             {isAnonymous ? '비밀스럽게 팡! 🧚' : '팡! 발사 🚀'}
           </button>
         </div>
 
-        {/* Weekly History List */}
+        {/* History List */}
         <div className="flex-1 flex flex-col min-h-0 border-t border-gray-200 pt-3">
           <div className="flex items-center justify-between mb-2">
             <span className="text-xs font-bold text-[#00479B]">📍 최근 소식 이력 (7일)</span>
@@ -233,25 +323,20 @@ export default function HomePage() {
             {Object.keys(groupedHistory).length > 0 ? (
               Object.keys(groupedHistory).map((dateKey) => (
                 <div key={dateKey} className="mb-4">
-                  {/* Date Header */}
                   <div className="flex items-center gap-2 mb-2">
                     <div className="h-[1px] flex-1 bg-gray-100"></div>
-                    <span className="text-[10px] font-bold text-gray-400 bg-gray-50 px-2 py-0.5 rounded-full border border-gray-100">
-                      {formatDateLabel(groupedHistory[dateKey][0].timestamp)}
-                    </span>
+                    <span className="text-[10px] font-bold text-gray-400 bg-gray-50 px-2 py-0.5 rounded-full border border-gray-100">{formatDateLabel(groupedHistory[dateKey][0].timestamp)}</span>
                     <div className="h-[1px] flex-1 bg-gray-100"></div>
                   </div>
-
-                  {/* Items under this date */}
                   {groupedHistory[dateKey].map((item: any, idx: number) => (
                     <div key={idx} className="mb-2 p-2.5 bg-white rounded border border-gray-100 shadow-sm flex flex-col gap-1.5 transition-all hover:border-[#36A3D1]">
                       <div className="flex justify-between items-center">
-                        <span className={`text-[10px] font-bold ${item.isAnonymous ? 'text-purple-500' : 'text-[#00479B]'}`}>
-                          {item.sender || (item.isAnonymous ? '익명' : '알 수 없음')}
-                        </span>
-                        <span className="text-[9px] text-gray-400">{formatTime(item.timestamp)}</span>
+                        <span className={`text-[10px] font-bold ${item.isAnonymous ? 'text-purple-500' : 'text-[#00479B]'}`}>{item.sender || (item.isAnonymous ? '익명' : '알 수 없음')}</span>
+                        <span className="text-[9px] text-gray-400">{new Date(item.timestamp).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false })}</span>
                       </div>
-                      <p className="text-xs text-gray-700 leading-relaxed break-words">{item.text}</p>
+                      <p className="text-xs text-gray-700 leading-relaxed break-words">
+                        {item.text}
+                      </p>
                     </div>
                   ))}
                 </div>
@@ -267,20 +352,17 @@ export default function HomePage() {
       </div>
 
       <style jsx>{`
-        .custom-scrollbar::-webkit-scrollbar {
-          width: 5px;
+        .custom-scrollbar::-webkit-scrollbar { width: 5px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
+        .custom-scrollbar-slim::-webkit-scrollbar { height: 3px; }
+        .custom-scrollbar-slim::-webkit-scrollbar-track { background: transparent; }
+        .custom-scrollbar-slim::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 10px; }
+        @keyframes fade-in-up {
+          from { opacity: 0; transform: translateY(10px); }
+          to { opacity: 1; transform: translateY(0); }
         }
-        .custom-scrollbar::-webkit-scrollbar-track {
-          background: transparent;
-        }
-        .custom-scrollbar::-webkit-scrollbar-thumb {
-          background: #cbd5e1;
-          border-radius: 10px;
-        }
-        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-          background: #94a3b8;
-        }
-        .shrink-0 { flex-shrink: 0; }
+        .animate-fade-in-up { animation: fade-in-up 0.2s ease-out forwards; }
       `}</style>
     </React.Fragment>
   )

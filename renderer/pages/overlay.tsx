@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react'
 import Head from 'next/head'
+import { getTodayRecommendation } from '../utils/dateHelper'
 
-const EMOJIS = ['🎉', '🎊', '✨', '🍕', '🍩', '🎈', '🔥', '🥳']
+const DEFAULT_EMOJIS = ['🎉', '🎊', '✨', '🍕', '🍩', '🎈', '🔥', '🥳']
 
 interface FireworkItem {
   id: number
@@ -14,23 +15,49 @@ export default function OverlayPage() {
   const [items, setItems] = useState<FireworkItem[]>([])
 
   useEffect(() => {
-    window.ipc.on('start-fireworks', (data: any) => {
-      triggerFireworks()
+    // 메인 프로세스로부터 폭죽 트리거 이벤트를 수신
+    const unsubscribe = window.ipc.on('start-fireworks', (data: any) => {
+      triggerFireworks(data?.emojis)
     })
+
+    return () => {
+      if (typeof unsubscribe === 'function') {
+        unsubscribe()
+      }
+    }
   }, [])
 
-  const triggerFireworks = () => {
+  const triggerFireworks = (customEmojis?: string[]) => {
+    // [Smart Default Logic]
+    // 1. 사용자가 직접 고른 이모지가 있다면 최우선 적용
+    // 2. 없다면 '오늘의 추천' 이모지가 있는지 확인 (월급날, 기념일 등)
+    // 3. 추천도 없다면 기존 '기본 이모지 세트' 사용
+    let activeEmojis: string[] | null = customEmojis && customEmojis.length > 0 ? customEmojis : null
+
+    if (!activeEmojis) {
+      const rec = getTodayRecommendation()
+      if (rec) activeEmojis = rec.emojis
+    }
+
+    if (!activeEmojis) {
+      activeEmojis = DEFAULT_EMOJIS
+    }
+
     const newItems: FireworkItem[] = []
-    for (let i = 0; i < 40; i++) {
+    // 폭죽 개수를 사용자 요청에 맞춰 최적화 (100 -> 50)
+    const count = 50
+
+    for (let i = 0; i < count; i++) {
       newItems.push({
         id: Date.now() + i,
-        emoji: EMOJIS[Math.floor(Math.random() * EMOJIS.length)],
-        left: `${Math.random() * 80 + 10}%`, // 너무 가장자리에 치우치지 않게
-        delay: Math.random() * 0.8,
+        emoji: activeEmojis[Math.floor(Math.random() * activeEmojis.length)],
+        left: `${Math.random() * 90 + 5}%`, // 조금 더 넓게 퍼지도록
+        delay: Math.random() * 1.5, // 지연 시간을 늘려 더 오래 지속되는 느낌
       })
     }
     setItems(newItems)
 
+    // 애니메이션 종료 후 클린업 (3.5초 애니메이션 이후 1초 여유)
     setTimeout(() => {
       setItems([])
     }, 4500)
@@ -49,10 +76,10 @@ export default function OverlayPage() {
             style={{
               left: item.left,
               animationDelay: `${item.delay}s`,
-              fontSize: `${Math.random() * 20 + 20}px`, // 20~40px 사이로 크기 고정
-              '--tx': `${(Math.random() - 0.5) * 300}px`, // 무작위 좌우 편차
-              '--ty': `${-(Math.random() * 400 + 400)}px`, // 무작위 상승 높이
-              '--tr': `${(Math.random() - 0.5) * 720}deg`, // 무작위 회전
+              fontSize: `${Math.random() * 20 + 20}px`,
+              '--tx': `${(Math.random() - 0.5) * 300}px`,
+              '--ty': `${-(Math.random() * 400 + 400)}px`,
+              '--tr': `${(Math.random() - 0.5) * 720}deg`,
             } as any}
           >
             {item.emoji}
