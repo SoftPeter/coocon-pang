@@ -115,6 +115,15 @@ git push -u origin main
 
 ## 📜 버전 히스토리
 
+### v1.0.4 (2026-02-06)
+- **[CRITICAL] 업무 방해 방지 (No-Focus Overlay)**:
+    - 폭죽 효과가 나타날 때 사용자 화면의 포커스를 탈취(Focus Theft)하던 문제 수정.
+    - `showInactive()` 및 `focusable: false` 속성을 통해 작업 중인 타이핑/클릭이 끊기지 않도록 보장.
+    - `setIgnoreMouseEvents(true)`를 통해 모든 입력이 오버레이 레이어를 투명하게 통과하도록 조치.
+- **공식 브랜드 로고 반영 및 트레이 이슈 해결**:
+    - 앱 전체 아이콘(ico), 메인 UI 로고(png), 트레이 아이콘을 확정된 디자인으로 교체.
+    - 빌드 설정(`electron-builder.yml`) 내 리소스 경로 오류 수정으로 배포판 트레이 아이콘 미표시 문제 해결.
+
 ### v1.0.3 (2026-02-06)
 - **[HOTFIX] 메인 프로세스 안정화**:
     - `TypeError: Object has been destroyed` 크래시 수정.

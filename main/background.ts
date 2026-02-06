@@ -45,11 +45,13 @@ let isMuted = false
       frame: false,
       alwaysOnTop: true,
       show: false,
+      focusable: false,  // [최우선] 포커스 탈취 금지
+      skipTaskbar: true, // 작업표시줄에 표시 안 함
       webPreferences: {
         preload: path.join(__dirname, 'preload.js'),
       },
     })
-    overlayWindow.setIgnoreMouseEvents(true)
+    overlayWindow.setIgnoreMouseEvents(true, { forward: true })
 
     const port = process.argv[2]
     if (isProd) {
@@ -64,7 +66,7 @@ let isMuted = false
     // 3. 시스템 트레이 초기화
     const iconPath = isProd
       ? path.join(process.resourcesPath, 'tray-icon.png')
-      : path.join(__dirname, '../renderer/public/images/logo-icon.png')
+      : path.join(__dirname, '../renderer/public/images/tray-icon.png')
 
     const icon = nativeImage.createFromPath(iconPath).resize({ width: 16, height: 16 })
     tray = new Tray(icon)
@@ -125,7 +127,7 @@ ipcMain.on('trigger-pang', (event, data) => {
   // Phase 2: Show Overlay & Fireworks - 핫픽스 적용 (안전한 접근)
   if (overlayWindow && !overlayWindow.isDestroyed()) {
     try {
-      overlayWindow.show()
+      overlayWindow.showInactive()
       if (overlayWindow.webContents && !overlayWindow.webContents.isDestroyed()) {
         overlayWindow.webContents.send('start-fireworks', data)
       }

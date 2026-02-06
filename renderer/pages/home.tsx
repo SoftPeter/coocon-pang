@@ -198,7 +198,7 @@ export default function HomePage() {
         {/* Header */}
         <div className="flex justify-between items-center mb-3">
           <div className="flex items-center gap-2">
-            <img src="/images/logo-icon.png" alt="Logo" className="w-6 h-6" />
+            <img src="/images/logo-main.png" alt="Logo" className="w-6 h-6 object-contain" />
             <span className="font-bold text-[#00479B] tracking-tight text-base">쿠콘팡! 소식 쏘기</span>
           </div>
           <button onClick={() => window.ipc.send('hide-sender', null)} className="w-6 h-6 flex items-center justify-center rounded-full hover:bg-gray-200 text-gray-400 transition-colors">✕</button>
