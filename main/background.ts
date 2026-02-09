@@ -1,5 +1,4 @@
 import path from 'path'
-import os from 'os'
 import { app, ipcMain, Tray, Menu, nativeImage, globalShortcut, Notification, screen } from 'electron'
 import serve from 'electron-serve'
 import { createWindow } from './helpers'
@@ -147,7 +146,7 @@ ipcMain.on('trigger-pang', (event, data) => {
   try {
     const title = data.isAnonymous
       ? '🧚 [쿠콘팡] 익명의 소식'
-      : `📣 [쿠콘팡] ${data.sender || '동료'}님의 소식!`
+      : `📣 [쿠콘팡] ${data.sender || '익명'}님의 소식!`
 
     const notification = new Notification({
       title,
@@ -169,9 +168,7 @@ ipcMain.on('trigger-pang', (event, data) => {
   }
 })
 
-ipcMain.handle('get-username', () => {
-  return os.userInfo().username || '동료님'
-})
+// ipcMain.handle('get-username', () => { ... }) 삭제 완료 (v1.0.5)
 
 ipcMain.on('hide-sender', () => {
   if (mainWindow && !mainWindow.isDestroyed()) {

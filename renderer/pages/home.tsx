@@ -25,7 +25,6 @@ export default function HomePage() {
   const [text, setText] = useState('')
   const [nickname, setNickname] = useState('')
   const [isAnonymous, setIsAnonymous] = useState(false)
-  const [userName, setUserName] = useState('동료님')
   const [history, setHistory] = useState<any[]>([])
   const [mountTime] = useState(Date.now())
 
@@ -42,9 +41,6 @@ export default function HomePage() {
       try {
         const savedNickname = localStorage.getItem('coocon-pang-nickname')
         if (savedNickname) setNickname(savedNickname)
-
-        const name = await window.ipc.invoke('get-username')
-        if (name) setUserName(name)
 
         const today = new Date()
         const sevenDaysAgo = new Date(today.getFullYear(), today.getMonth(), today.getDate() - 6).getTime()
@@ -126,7 +122,7 @@ export default function HomePage() {
       const pangRef = ref(db, 'pang_events')
       await push(pangRef, {
         text,
-        sender: isAnonymous ? '익명의 요정' : `${nickname || '익명'}(${userName})`,
+        sender: isAnonymous ? '익명의 요정' : (nickname || '익명'),
         isAnonymous,
         timestamp: serverTimestamp(),
         emojis: selectedEmojis.length > 0 ? selectedEmojis : null // 선택 없으면 null (수신측에서 스마트 디폴트 처리)
@@ -209,13 +205,12 @@ export default function HomePage() {
           <span className="text-xs font-semibold text-gray-500 w-12 shrink-0">보내는 이</span>
           <input
             type="text"
-            placeholder="이름 입력 (예: 홍길동)"
+            placeholder="이름 입력 (미입력 시 익명)"
             className="flex-1 px-3 py-1.5 border border-gray-200 rounded text-sm focus:outline-none focus:ring-1 focus:ring-[#36A3D1] text-gray-900 bg-white"
             value={nickname}
             onChange={(e) => setNickname(e.target.value)}
             disabled={isAnonymous}
           />
-          <span className="text-[10px] text-gray-400 shrink-0">({userName})</span>
         </div>
 
         {/* Message Area - 입력창 고정 및 내부 장착 UI */}
