@@ -251,7 +251,7 @@ export default function HomePage() {
           <textarea
             autoFocus
             className={`h-24 w-full p-4 pr-12 pb-10 border rounded-xl focus:outline-none focus:ring-2 transition-all resize-none text-[13px] text-gray-900 bg-white shadow-inner ${isAnonymous ? 'border-purple-300 focus:ring-purple-400' : 'border-gray-200 focus:ring-[#36A3D1]'}`}
-            placeholder={isAnonymous ? "익명의 요정이 되어 소식을 전해보세요!" : "나누고 싶은 기쁜 소식을 적어주세요! (최대 50자)"}
+            placeholder={isAnonymous ? "익명의 소식을 전해보세요!" : "나누고 싶은 기쁜 소식을 적어주세요! (최대 50자)"}
             maxLength={50}
             value={text}
             onChange={(e) => setText(e.target.value)}
@@ -315,7 +315,7 @@ export default function HomePage() {
                         evt.preventDefault();
                         toggleEmoji(e);
                       }}
-                      className="text-[17px] hover:scale-125 transition-all text-center rounded-lg flex items-center justify-center aspect-square shadow-sm border-2 bg-white border-gray-50 hover:border-blue-200 active:bg-blue-50 active:scale-95"
+                      className="text-[17px] hover:scale-125 transition-all text-center rounded-lg flex items-center justify-center aspect-square shadow-sm border-2 bg-white border-gray-100 hover:border-blue-200 active:bg-blue-50 active:scale-95"
                     >
                       {e}
                     </button>
@@ -328,7 +328,7 @@ export default function HomePage() {
 
         {/* Action Buttons */}
         <div className="flex gap-2 shrink-0 mb-4">
-          <button onClick={handleSend} disabled={isSending || !text.trim()} className={`flex-1 h-12 rounded-xl font-bold text-white shadow-lg transition-all active:scale-95 flex items-center justify-center gap-2 ${isSending ? 'bg-gray-400' : (isAnonymous ? 'bg-gradient-to-r from-purple-500 to-indigo-500' : 'bg-gradient-to-r from-[#36A3D1] to-[#00479B]')}`}>
+          <button onClick={handleSend} disabled={isSending || !text.trim()} className={`flex-1 h-12 rounded-xl font-bold transition-all active:scale-95 flex items-center justify-center gap-2 ${isSending || !text.trim() ? 'bg-gray-100 text-gray-300 cursor-not-allowed shadow-none' : (isAnonymous ? 'bg-gradient-to-r from-purple-600 to-indigo-700 text-white shadow-lg' : 'bg-gradient-to-r from-[#36A3D1] to-[#00479B] text-white shadow-lg')}`}>
             {isSending ? '발송 중...' : '쿠콘팡! 쏘기 🚀'}
           </button>
         </div>
