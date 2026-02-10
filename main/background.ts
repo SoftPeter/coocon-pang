@@ -15,6 +15,7 @@ let tray: Tray | null = null
 let mainWindow: any = null
 let overlayWindow: any = null
 let isMuted = false
+let overlayHideTimer: NodeJS.Timeout | null = null
 
   ; (async () => {
     await app.whenReady()
@@ -126,17 +127,26 @@ ipcMain.on('trigger-pang', (event, data) => {
   // Phase 2: Show Overlay & Fireworks - 핫픽스 적용 (안전한 접근)
   if (overlayWindow && !overlayWindow.isDestroyed()) {
     try {
+      console.log('[main] Sending trigger-pang to overlay:', data.comboCount)
       overlayWindow.showInactive()
       if (overlayWindow.webContents && !overlayWindow.webContents.isDestroyed()) {
-        overlayWindow.webContents.send('start-fireworks', data)
+        overlayWindow.webContents.send('trigger-pang', data)
       }
 
-      // 예약된 작업도 안전하게 처리
-      const timerId = setTimeout(() => {
+      // GOD 등급의 긴 연출(6초)을 고려하여 숨김 시간을 더 넉넉히 가져감 (7.5초)
+      // 기존 타이머가 있다면 취소하여 메시지 누적 시 오버레이가 일찍 닫히는 현상 방지
+      if (overlayHideTimer) {
+        clearTimeout(overlayHideTimer)
+      }
+
+      // 연출 시간 단축(4s)에 맞춰 숨김 시간을 5초로 조정
+      const hideDuration = 5000
+      overlayHideTimer = setTimeout(() => {
         if (overlayWindow && !overlayWindow.isDestroyed()) {
           overlayWindow.hide()
+          overlayHideTimer = null
         }
-      }, 4500)
+      }, hideDuration)
     } catch (e) {
       console.error('Error in overlay animation:', e)
     }

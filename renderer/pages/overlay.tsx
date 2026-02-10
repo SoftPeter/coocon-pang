@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import Head from 'next/head'
 import { getTodayRecommendation } from '../utils/dateHelper'
 
@@ -8,16 +8,22 @@ interface FireworkItem {
   id: number
   emoji: string
   left: string
+  bottom: string
   delay: number
+  scale: number
+  isCenter: boolean
+  batchId: number
 }
 
 export default function OverlayPage() {
   const [items, setItems] = useState<FireworkItem[]>([])
+  const [grade, setGrade] = useState<'Normal' | 'Combo' | 'Mega' | 'GOD'>('Normal')
+  const [activeFlashes, setActiveFlashes] = useState(0)
+  const [activeShakes, setActiveShakes] = useState(0)
 
   useEffect(() => {
-    // 메인 프로세스로부터 폭죽 트리거 이벤트를 수신
-    const unsubscribe = window.ipc.on('start-fireworks', (data: any) => {
-      triggerFireworks(data?.emojis)
+    const unsubscribe = window.ipc.on('trigger-pang', (data: any) => {
+      triggerComboPang(data)
     })
 
     return () => {
@@ -27,60 +33,121 @@ export default function OverlayPage() {
     }
   }, [])
 
-  const triggerFireworks = (customEmojis?: string[]) => {
-    // [Smart Default Logic]
-    // 1. 사용자가 직접 고른 이모지가 있다면 최우선 적용
-    // 2. 없다면 '오늘의 추천' 이모지가 있는지 확인 (월급날, 기념일 등)
-    // 3. 추천도 없다면 기존 '기본 이모지 세트' 사용
-    let activeEmojis: string[] | null = customEmojis && customEmojis.length > 0 ? customEmojis : null
+  const triggerComboPang = (data: any) => {
+    console.log('[overlay] Received data:', data)
+    const combo = data?.comboCount || 0
+    let currentGrade: 'Normal' | 'Combo' | 'Mega' | 'GOD' = 'Normal'
 
+    if (combo >= 10) currentGrade = 'GOD'
+    else if (combo >= 5) currentGrade = 'Mega'
+    else if (combo >= 3) currentGrade = 'Combo'
+    else currentGrade = 'Normal'
+
+    console.log('[overlay] Grade Determined:', currentGrade, 'Combo:', combo)
+    setGrade(currentGrade)
+
+    let activeEmojis: string[] = data?.emojis && data.emojis.length > 0 ? data.emojis : null
     if (!activeEmojis) {
       const rec = getTodayRecommendation()
-      if (rec) activeEmojis = rec.emojis
-    }
-
-    if (!activeEmojis) {
-      activeEmojis = DEFAULT_EMOJIS
+      activeEmojis = rec ? rec.emojis : DEFAULT_EMOJIS
     }
 
     const newItems: FireworkItem[] = []
-    // 폭죽 개수를 사용자 요청에 맞춰 최적화 (100 -> 50)
-    const count = 50
+    let count = 40
+    let baseScale = 1
+
+    if (currentGrade === 'Combo') {
+      count = 60
+      baseScale = 1.5
+    } else if (currentGrade === 'Mega') {
+      count = 100
+      baseScale = 2.5
+    } else if (currentGrade === 'GOD') {
+      count = 200
+      baseScale = 4
+    }
+
+    // Mega/GOD 등급 시 화면 진동 및 플래시 (카운팅 방식)
+    if (currentGrade === 'Mega' || currentGrade === 'GOD') {
+      setActiveFlashes(prev => prev + 1)
+      setActiveShakes(prev => prev + 1)
+      setTimeout(() => {
+        setActiveFlashes(prev => Math.max(0, prev - 1))
+        setActiveShakes(prev => Math.max(0, prev - 1))
+      }, 2000)
+    }
+
+    const isCenterGrade = currentGrade !== 'Normal'
+    const batchId = Date.now() + Math.random() // 소수점 추가로 완벽한 고유 ID 보장
+
+    // 중앙 집중형일 때 기준점 자체를 랜덤화 (30% ~ 70% 사이)
+    const baseCenterLeft = isCenterGrade ? (30 + Math.random() * 40) : 50
+    const baseCenterBottom = isCenterGrade ? (30 + Math.random() * 40) : 50
 
     for (let i = 0; i < count; i++) {
+      const isCenter = isCenterGrade
+      // 개별 이모지 지터(Jitter): 중앙에서 솟구칠 때도 살짝씩 흩어지게
+      const centerJitterX = isCenter ? (Math.random() - 0.5) * 15 : 0
+      const centerJitterY = isCenter ? (Math.random() - 0.5) * 15 : 0
+
       newItems.push({
-        id: Date.now() + i,
+        id: batchId + i,
         emoji: activeEmojis[Math.floor(Math.random() * activeEmojis.length)],
-        left: `${Math.random() * 90 + 5}%`, // 조금 더 넓게 퍼지도록
-        delay: Math.random() * 1.5, // 지연 시간을 늘려 더 오래 지속되는 느낌
+        left: isCenter ? `calc(${baseCenterLeft}% + ${centerJitterX}%)` : `${Math.random() * 90 + 5}%`,
+        bottom: isCenter ? `calc(${baseCenterBottom}% + ${centerJitterY}%)` : '0px',
+        delay: currentGrade === 'GOD' ? Math.random() * 3 : Math.random() * 1.5,
+        scale: baseScale * (0.8 + Math.random() * 0.4),
+        isCenter,
+        batchId
       })
     }
-    setItems(newItems)
 
-    // 애니메이션 종료 후 클린업 (3.5초 애니메이션 이후 1초 여유)
+    setItems(prev => [...prev, ...newItems])
+
+    // 각 연출 배치는 5초 후 자기 자신만 삭제
     setTimeout(() => {
-      setItems([])
-    }, 4500)
+      setItems(prev => prev.filter(item => item.batchId !== batchId))
+    }, 5000)
   }
 
   return (
     <React.Fragment>
       <Head>
-        <title>쿠콘팡 - 오버레이</title>
+        <title>쿠콘팡 - 오버레이 (Pure Combo)</title>
       </Head>
-      <div className="relative w-screen h-screen overflow-hidden transparent pointer-events-none">
+      <div className={`relative w-screen h-screen overflow-hidden transparent pointer-events-none ${activeShakes > 0 ? 'animate-shake' : ''}`}>
+        {/* White Flash Effect (가시성 조절: 0.5 opacity) */}
+        <div className={`absolute inset-0 bg-white transition-opacity duration-300 pointer-events-none ${activeFlashes > 0 ? 'opacity-50' : 'opacity-0'}`} />
+
         {items.map((item) => (
           <div
             key={item.id}
-            className="absolute bottom-0 animate-popcorn flex items-center justify-center"
+            className={`absolute flex items-center justify-center ${grade === 'GOD' ? 'animate-slow-popcorn' : 'animate-popcorn'}`}
             style={{
               left: item.left,
+              bottom: item.bottom,
               animationDelay: `${item.delay}s`,
-              fontSize: `${Math.random() * 20 + 20}px`,
-              '--tx': `${(Math.random() - 0.5) * 300}px`,
-              '--ty': `${-(Math.random() * 400 + 400)}px`,
-              '--tr': `${(Math.random() - 0.5) * 720}deg`,
+              fontSize: `${20 * item.scale}px`,
+              '--tx': `${(Math.random() - 0.5) * (item.isCenter ? 1200 : 300)}px`,
+              '--ty': `${-(Math.random() * 700 + (item.isCenter ? 100 : 400))}px`,
+              '--tr': `${(Math.random() - 0.5) * 1080}deg`,
+              zIndex: Math.floor(item.scale * 10)
             } as any}
+          >
+            {item.emoji}
+          </div>
+        ))}
+
+        {/* Full screen Emoji Rise (상향식 분수) for GOD grade */}
+        {grade === 'GOD' && items.slice(0, 60).map((item, idx) => (
+          <div
+            key={`rise-${idx}`}
+            className="absolute bottom-[-50px] animate-rise text-4xl"
+            style={{
+              left: `${Math.random() * 100}%`,
+              animationDelay: `${Math.random() * 4}s`,
+              animationDuration: `${Math.random() * 1.5 + 2}s`
+            }}
           >
             {item.emoji}
           </div>
@@ -111,8 +178,48 @@ export default function OverlayPage() {
             opacity: 0;
           }
         }
+        @keyframes slow-popcorn {
+          0% {
+            transform: translate(0, 0) scale(0);
+            opacity: 0;
+            filter: blur(5px);
+          }
+          10% {
+            opacity: 1;
+            filter: blur(0px);
+          }
+          80% {
+            opacity: 1;
+            transform: translate(var(--tx), var(--ty)) rotate(var(--tr)) scale(1.5);
+            filter: drop-shadow(0 0 20px goldenrod);
+          }
+          100% {
+            transform: translate(calc(var(--tx) * 1.1), calc(var(--ty) + 100px)) scale(0);
+            opacity: 0;
+          }
+        }
+        @keyframes shake {
+          0%, 100% { transform: translate(0, 0); }
+          10%, 30%, 50%, 70%, 90% { transform: translate(-10px, -10px); }
+          20%, 40%, 60%, 80% { transform: translate(10px, 10px); }
+        }
+        @keyframes rise {
+          0% { transform: translateY(0); opacity: 0; }
+          10% { opacity: 1; }
+          90% { opacity: 1; }
+          100% { transform: translateY(-110vh); opacity: 0; }
+        }
         .animate-popcorn {
           animation: popcorn 3.5s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards;
+        }
+        .animate-slow-popcorn {
+          animation: slow-popcorn 4s cubic-bezier(0.1, 0.5, 0.2, 1) forwards;
+        }
+        .animate-shake {
+          animation: shake 0.5s ease-in-out infinite;
+        }
+        .animate-rise {
+          animation: rise linear forwards;
         }
       `}} />
     </React.Fragment>
