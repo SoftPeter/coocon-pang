@@ -1,4 +1,4 @@
-# 🚀 쿠콘팡 (COOCON-PANG) v1.0.6 (Pure Combo Edition)
+# 🚀 쿠콘팡 (COOCON-PANG) v1.0.7 (Ephemeral Photo Edition)
 
 > **"5개의 감옥에서 탈출, 이제 진정한 '무한 연타'의 시대가 열렸습니다!"**
 
@@ -12,9 +12,14 @@ Windows 환경에서 `npm run build` 시 "Cannot create symbolic link" 오류가
 
 ---
 
-## ✨ v1.0.6 핵심 기능: '순수 콤보 팡'
+## ✨ v1.0.7 핵심 기능: '50KB 사진 팡'
 
-### 1. 무한 콤보 시스템 (Infinity Combo)
+### 1. 휘발성 사진 전송 (Ephemeral Photo)
+- **50KB 고수**: Canvas API를 통한 지능형 압축으로 화질은 유지하면서 데이터 전송량을 최소화합니다. (50KB 초과 시 전송 자동 차단)
+- **이중 삭제 시스템**: 보안과 트래픽 보호를 위해 발신자(5초 후)와 수신자(7초 후)가 협력하여 DB와 화면에서 사진을 즉시 소멸시킵니다.
+- **Ctrl+V & 쿨다운 알림**: 윈도우 캡처 도구 이미지 붙여넣기를 지원하며, 재장전 중 첨부 시도 시 중앙에 선명한 안내 메시지를 표시하여 즉각적인 피드백을 제공합니다.
+
+### 2. 무한 콤보 시스템 (Infinity Combo)
 메시지 속 연속된 이모지 개수를 파악하여 4단계의 풍성한 오버레이 연출이 터집니다.
 | 단계 | 조건 | 연출 효과 (Overlay) | 타격감 요소 |
 | :--- | :--- | :--- | :--- |
@@ -37,7 +42,7 @@ Windows 환경에서 `npm run build` 시 "Cannot create symbolic link" 오류가
 
 ## 🛠 기술 스택
 - **Framework**: [Nextron](https://github.com/saltyshippo/nextron) (Next.js 14 + Electron)
-- **Realtime DB**: Firebase Realtime Database (Text-only)
+- **Realtime DB**: Firebase Realtime Database (Ephemeral Text & Photo)
 - **Styling**: Tailwind CSS & Vanilla CSS Animation
 - **Language**: TypeScript
 
@@ -75,6 +80,14 @@ npm run build
 ---
 
 ## 📜 버전 히스토리 (최근)
+
+### v1.0.7 (2026-02-13) - Ephemeral Photo Edition
+- **[기획]** '50KB 고수 & 휘발성 사진 팡' 시스템 도입: 고화질 유지 및 트래픽/보안 강화.
+- **[기능]** Ctrl+V(클립보드) 이미지 붙여넣기 및 쿨다운 중 첨부 시도 차단 지원.
+- **[보안]** 이중 삭제 로직(발신자 5초 / 수신자 7초) 및 데이터 즉시 소멸 적용.
+- **[UI/UX]** 인라인 스타일 기반 가시성 극대화 (삭제 버튼, 알림 메시지, 전송 버튼 대비 최적화).
+- **[정렬]** 알림 메시지 중앙 정렬 보정 및 화면 잘림 현상 완벽 해결.
+- **[성능]** 하드웨어 가속(GPU) 최적화로 50KB 사진 렌더링 시 렉 방지.
 
 ### v1.0.6 (2026-02-10) - Pure Combo Edition
 - **[기획]** '순수 콤보 팡' 체계 도입: 5개 상한 완전 삭제 및 텍스트 기반 무제한 콤보 지원.

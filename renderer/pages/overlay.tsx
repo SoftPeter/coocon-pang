@@ -21,6 +21,11 @@ export default function OverlayPage() {
   const [activeFlashes, setActiveFlashes] = useState(0)
   const [activeShakes, setActiveShakes] = useState(0)
 
+  // v1.0.7 추가 상태
+  const [activePhoto, setActivePhoto] = useState<string | null>(null)
+  const [photoVisible, setPhotoVisible] = useState(false)
+  const photoTimerRef = useRef<NodeJS.Timeout | null>(null)
+
   useEffect(() => {
     const unsubscribe = window.ipc.on('trigger-pang', (data: any) => {
       triggerComboPang(data)
@@ -104,6 +109,26 @@ export default function OverlayPage() {
 
     setItems(prev => [...prev, ...newItems])
 
+    // v1.0.7 사진 처리 로직
+    if (data?.base64Image) {
+      console.log('[v1.0.7] Photo received. Starting 7s cleanup timer.')
+
+      // 단일 점유: 기존 타이머 및 사진 초기화
+      if (photoTimerRef.current) clearTimeout(photoTimerRef.current)
+
+      setActivePhoto(data.base64Image)
+      setPhotoVisible(true)
+
+      // 7초 후 강제 수거 (메모리 최적화)
+      photoTimerRef.current = setTimeout(() => {
+        setPhotoVisible(false)
+        setTimeout(() => {
+          setActivePhoto(null) // Base64 데이터 메모리 해제
+          console.log('[v1.0.7] Photo resources cleared from memory.')
+        }, 500) // 페이드 아웃 시간 확보
+      }, 7000)
+    }
+
     // 각 연출 배치는 5초 후 자기 자신만 삭제
     setTimeout(() => {
       setItems(prev => prev.filter(item => item.batchId !== batchId))
@@ -152,6 +177,30 @@ export default function OverlayPage() {
             {item.emoji}
           </div>
         ))}
+
+        {/* v1.0.7 필살기: 사진 팡 레이어 (GPU 가속) */}
+        {activePhoto && (
+          <div
+            className={`absolute inset-0 flex items-center justify-center z-[999] transition-all duration-500 ease-out will-change-[transform,opacity] ${photoVisible ? 'opacity-100 scale-100 rotate-0' : 'opacity-0 scale-50 rotate-12'}`}
+            style={{ pointerEvents: 'none' }}
+          >
+            <div className="relative group">
+              {/* 후광 효과 */}
+              <div className="absolute inset-0 bg-blue-400 blur-3xl opacity-20 animate-pulse rounded-full" />
+
+              <img
+                src={activePhoto}
+                className="max-w-[80vw] max-h-[70vh] rounded-3xl border-8 border-white shadow-[0_20px_50px_rgba(0,0,0,0.3)] object-contain transform translate3d(0,0,0)"
+                alt="pang-photo"
+                style={{ backfaceVisibility: 'hidden' }}
+              />
+
+              {/* 리본 장식 */}
+              <div className="absolute -top-6 -left-6 text-5xl transform -rotate-12 animate-bounce">🎁</div>
+              <div className="absolute -bottom-6 -right-6 text-5xl transform rotate-12 animate-bounce" style={{ animationDelay: '0.2s' }}>✨</div>
+            </div>
+          </div>
+        )}
       </div>
 
       <style dangerouslySetInnerHTML={{

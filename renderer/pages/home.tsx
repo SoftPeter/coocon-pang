@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react'
 import Head from 'next/head'
 import { db } from '../lib/firebase'
-import { ref, push, onChildAdded, serverTimestamp, query, orderByChild, startAt, endAt, get, limitToLast } from 'firebase/database'
+import { ref, push, onChildAdded, serverTimestamp, query, orderByChild, startAt, endAt, get, limitToLast, update } from 'firebase/database'
 import { getTodayRecommendation } from '../utils/dateHelper'
 
 const COMMON_EMOJIS = [
@@ -52,8 +52,14 @@ export default function HomePage() {
   const [hasAutoSelected, setHasAutoSelected] = useState(false)
   const [isSending, setIsSending] = useState(false)
 
+  // v1.0.7 추가 상태
+  const [base64Image, setBase64Image] = useState<string | null>(null)
+  const [photoCooldown, setPhotoCooldown] = useState(0)
+  const [imageError, setImageError] = useState<string | null>(null)
+
   const recommendation = getTodayRecommendation()
   const pickerRef = useRef<HTMLDivElement>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     const init = async () => {
@@ -102,6 +108,14 @@ export default function HomePage() {
     return () => unsubscribe()
   }, [mountTime])
 
+  // v1.0.7 쿨다운 타이머
+  useEffect(() => {
+    if (photoCooldown > 0) {
+      const timer = setTimeout(() => setPhotoCooldown(prev => prev - 1), 1000)
+      return () => clearTimeout(timer)
+    }
+  }, [photoCooldown])
+
   useEffect(() => {
     const handleGlobalKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
@@ -126,11 +140,112 @@ export default function HomePage() {
     }
   }, [showEmojiPicker])
 
+  // v1.0.7 지능형 50KB 압축 함수
+  const compressTo50KB = (file: File | Blob): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader()
+      reader.readAsDataURL(file)
+      reader.onload = (event) => {
+        const img = new Image()
+        img.src = event.target?.result as string
+        img.onload = () => {
+          const canvas = document.createElement('canvas')
+          let width = img.width
+          let height = img.height
+
+          // 1단계 리사이징: 최대 600px (화질 확보 우선)
+          const MAX_SIZE = 600
+          if (width > height) {
+            if (width > MAX_SIZE) {
+              height *= MAX_SIZE / width
+              width = MAX_SIZE
+            }
+          } else {
+            if (height > MAX_SIZE) {
+              width *= MAX_SIZE / height
+              height = MAX_SIZE
+            }
+          }
+
+          canvas.width = width
+          canvas.height = height
+          const ctx = canvas.getContext('2d')
+          ctx?.drawImage(img, 0, 0, width, height)
+
+          // 2단계: 품질을 낮춰가며 50KB(51200 Bytes) 맞추기
+          let quality = 0.8
+          let base64 = ''
+
+          const attemptCompress = () => {
+            base64 = canvas.toDataURL('image/jpeg', quality)
+            const size = Math.round((base64.length * 3) / 4)
+
+            if (size > 51200 && quality > 0.1) {
+              quality -= 0.1
+              attemptCompress()
+            } else if (size > 51200) {
+              // 최저 품질에서도 초과 시 해상도 축소
+              if (width > 200) {
+                width *= 0.8
+                height *= 0.8
+                canvas.width = width
+                canvas.height = height
+                ctx?.drawImage(img, 0, 0, width, height)
+                quality = 0.6
+                attemptCompress()
+              } else {
+                reject(new Error('이미지가 너무 큽니다. 50KB 한도 초과!'))
+              }
+            } else {
+              resolve(base64)
+            }
+          }
+          attemptCompress()
+        }
+        img.onerror = () => reject(new Error('이미지 로드 실패'))
+      }
+      reader.onerror = () => reject(new Error('파일 읽기 실패'))
+    })
+  }
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    processImage(file)
+  }
+
+  const handlePaste = async (e: React.ClipboardEvent) => {
+    const items = e.clipboardData.items
+    for (let i = 0; i < items.length; i++) {
+      if (items[i].type.indexOf('image') !== -1) {
+        const blob = items[i].getAsFile()
+        if (blob) processImage(blob)
+        break
+      }
+    }
+  }
+
+  const processImage = async (file: File | Blob) => {
+    setImageError(null)
+    if (photoCooldown > 0) {
+      setImageError(`재장전 중에는 사진을 첨부할 수 없습니다. (${photoCooldown}초 남음)`)
+      setTimeout(() => setImageError(null), 3000)
+      return
+    }
+    try {
+      const compressed = await compressTo50KB(file)
+      setBase64Image(compressed)
+    } catch (err: any) {
+      setImageError(err.message)
+      setTimeout(() => setImageError(null), 3000)
+    }
+  }
+
   const handleSend = async () => {
-    if (!text.trim() || isSending) return
+    if ((!text.trim() && !base64Image) || isSending || (photoCooldown > 0 && !!base64Image)) return
     setIsSending(true)
 
-    // 콤보 판정: 연속된 동일 이모지 최대 개수 추출
+    // 콤보 판정
     let maxCombo = 0;
     if (selectedEmojis.length > 0) {
       let currentCombo = 1;
@@ -148,25 +263,46 @@ export default function HomePage() {
     try {
       const pangRef = ref(db, 'pang_events')
 
-      // 전송 데이터 스냅샷
-      const payload = {
-        text,
+      const payload: any = {
+        text: text.trim() || (base64Image ? '사진을 보냈습니다! 📸' : ''),
         sender: isAnonymous ? '익명의 요정' : (nickname || '익명'),
         isAnonymous,
         timestamp: serverTimestamp(),
         emojis: selectedEmojis.length > 0 ? selectedEmojis : null,
-        comboCount: maxCombo
+        comboCount: maxCombo,
+        base64Image: base64Image
       }
 
-      // UI 즉시 초기화 (체감 속도 향상)
+      // UI 즉시 초기화
       setText('')
       setSelectedEmojis([])
       setHasAutoSelected(false)
+      const sentImage = base64Image
+      setBase64Image(null)
 
-      await push(pangRef, payload)
+      // 사진 전송 시 10초 쿨다운
+      if (sentImage) {
+        setPhotoCooldown(10)
+      }
+
+      const newPostRef = await push(pangRef, payload)
+      const postId = newPostRef.key
 
       if (!isAnonymous && nickname.trim()) {
         localStorage.setItem('coocon-pang-nickname', nickname)
+      }
+
+      // v1.0.7: 5초 후 발신자가 직접 데이터 삭제 (휘발성 보안)
+      if (sentImage && postId) {
+        setTimeout(async () => {
+          try {
+            const postRef = ref(db, `pang_events/${postId}`)
+            await update(postRef, { base64Image: null })
+            console.log(`[v1.0.7] ID ${postId} 사진 삭제 완료`)
+          } catch (e) {
+            console.error('이미지 자동 삭제 실패:', e)
+          }
+        }, 5000)
       }
 
       window.ipc.send('hide-sender', null)
@@ -223,12 +359,12 @@ export default function HomePage() {
       <Head>
         <title>쿠콘팡 - 메시지 보내기</title>
       </Head>
-      <div className="flex flex-col h-screen bg-[#F7F9FC] border-2 border-[#00479B] p-4 rounded-lg overflow-hidden shadow-2xl relative font-sans">
+      <div className="flex flex-col h-screen bg-[#F7F9FC] border-2 border-[#00479B] p-4 rounded-lg overflow-hidden shadow-2xl relative font-sans" onPaste={handlePaste}>
         {/* Header */}
         <div className="flex justify-between items-center mb-3">
           <div className="flex items-center gap-2">
             <img src="/images/logo-main.png" alt="Logo" className="w-6 h-6 object-contain" />
-            <span className="font-bold text-[#00479B] tracking-tight text-base">쿠콘팡! 소식 쏘기</span>
+            <span className="font-bold text-[#00479B] tracking-tight text-base">쿠콘팡! v1.0.7</span>
           </div>
           <button onClick={() => window.ipc.send('hide-sender', null)} className="w-6 h-6 flex items-center justify-center rounded-full hover:bg-gray-200 text-gray-400 transition-colors">✕</button>
         </div>
@@ -251,7 +387,7 @@ export default function HomePage() {
           <textarea
             autoFocus
             className={`h-24 w-full p-4 pr-12 pb-10 border rounded-xl focus:outline-none focus:ring-2 transition-all resize-none text-[13px] text-gray-900 bg-white shadow-inner ${isAnonymous ? 'border-purple-300 focus:ring-purple-400' : 'border-gray-200 focus:ring-[#36A3D1]'}`}
-            placeholder={isAnonymous ? "익명의 소식을 전해보세요!" : "나누고 싶은 기쁜 소식을 적어주세요! (최대 50자)"}
+            placeholder={isAnonymous ? "익명의 소식을 전해보세요!" : "기쁜 소식을 적어주세요! (Ctrl+V로 사진 첨부)"}
             maxLength={50}
             value={text}
             onChange={(e) => setText(e.target.value)}
@@ -262,6 +398,28 @@ export default function HomePage() {
               }
             }}
           />
+
+          {/* Image Preview & Errors */}
+          {base64Image && (
+            <div className="absolute top-2 right-12 w-16 h-16 border-4 border-[#36A3D1] rounded-xl shadow-2xl animate-fade-in-up z-40 bg-white">
+              <img src={base64Image} className="w-full h-full object-cover rounded-md" alt="preview" />
+              <button
+                onClick={() => setBase64Image(null)}
+                style={{ backgroundColor: '#222', color: '#FFF', opacity: 1, border: '2px solid #FFF' }}
+                className="absolute -top-3 -right-3 w-8 h-8 rounded-full flex items-center justify-center shadow-2xl transition-all active:scale-95 font-black z-50 text-base"
+                title="사진 삭제"
+              >✕</button>
+            </div>
+          )}
+
+          {imageError && (
+            <div
+              style={{ backgroundColor: '#B91C1C', color: '#FFFFFF', zIndex: 9999 }}
+              className="absolute top-4 left-4 right-4 mx-auto px-4 py-3 rounded-2xl border-4 border-white shadow-[0_10px_40px_rgba(0,0,0,0.5)] animate-bounce flex items-center justify-center gap-2 text-center text-[13px] font-black"
+            >
+              <span className="text-lg">⚠️</span> {imageError}
+            </div>
+          )}
 
           <div className="absolute left-3 right-12 bottom-2.5 flex items-center gap-2 z-20 overflow-hidden">
             <div className="flex items-center gap-1.5 overflow-x-auto py-0.5 custom-scrollbar flex-1 whitespace-nowrap min-w-0 pr-1">
@@ -280,12 +438,28 @@ export default function HomePage() {
             )}
           </div>
 
-          <button onClick={() => setShowEmojiPicker(!showEmojiPicker)} className="absolute right-3 bottom-3 text-lg hover:scale-110 transition-transform p-1.5 rounded-full hover:bg-gray-100 shadow-sm border border-gray-100 bg-white z-20">
-            {selectedEmojis.length > 0 ? selectedEmojis[0] : '😊'}
-          </button>
+          <div className="absolute right-3 bottom-3 flex flex-col gap-1 z-20">
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              disabled={photoCooldown > 0}
+              className={`text-lg hover:scale-110 transition-transform p-1.5 rounded-full shadow-sm border border-gray-100 bg-white ${photoCooldown > 0 ? 'opacity-30' : 'opacity-100 hover:bg-blue-50'}`}
+            >
+              📷
+            </button>
+            <input
+              type="file"
+              ref={fileInputRef}
+              className="hidden"
+              accept="image/*"
+              onChange={handleFileChange}
+            />
+            <button onClick={() => setShowEmojiPicker(!showEmojiPicker)} className="text-lg hover:scale-110 transition-transform p-1.5 rounded-full hover:bg-gray-100 shadow-sm border border-gray-100 bg-white">
+              {selectedEmojis.length > 0 ? selectedEmojis[0] : '😊'}
+            </button>
+          </div>
 
           {showEmojiPicker && (
-            <div ref={pickerRef} className="absolute left-0 right-0 top-full mt-2 bg-white border-2 border-[#36A3D1] rounded-2xl shadow-[0_20px_60px_rgba(0,0,0,0.6)] z-50 p-4 animate-fade-in-up flex flex-col overflow-hidden h-[300px]">
+            <div ref={pickerRef} className="absolute left-0 right-0 top-full mt-2 bg-white border-2 border-[#36A3D1] rounded-2xl shadow-[0_20px_60px_rgba(0,0,0,0.6)] z-50 p-4 animate-fade-in-up flex flex-col overflow-hidden h-[260px]">
               <div className="flex justify-between items-center mb-3 pb-2 border-b border-gray-50 shrink-0">
                 <span className="text-xs font-black text-[#00479B] flex items-center gap-1.5 uppercase tracking-tighter cursor-default">🚀 발사 이모지 장착실</span>
                 <div className="flex items-center gap-2">
@@ -328,8 +502,20 @@ export default function HomePage() {
 
         {/* Action Buttons */}
         <div className="flex gap-2 shrink-0 mb-4">
-          <button onClick={handleSend} disabled={isSending || !text.trim()} className={`flex-1 h-12 rounded-xl font-bold transition-all active:scale-95 flex items-center justify-center gap-2 ${isSending || !text.trim() ? 'bg-gray-100 text-gray-300 cursor-not-allowed shadow-none' : (isAnonymous ? 'bg-gradient-to-r from-purple-600 to-indigo-700 text-white shadow-lg' : 'bg-gradient-to-r from-[#36A3D1] to-[#00479B] text-white shadow-lg')}`}>
-            {isSending ? '발송 중...' : '쿠콘팡! 쏘기 🚀'}
+          <button
+            onClick={handleSend}
+            disabled={isSending || (!text.trim() && !base64Image) || (photoCooldown > 0 && !!base64Image)}
+            style={{
+              backgroundColor: isSending || (!text.trim() && !base64Image) || (photoCooldown > 0 && !!base64Image)
+                ? '#E5E7EB'
+                : (isAnonymous ? '#6D28D9' : '#00479B'),
+              color: isSending || (!text.trim() && !base64Image) || (photoCooldown > 0 && !!base64Image)
+                ? '#9CA3AF'
+                : '#FFFFFF'
+            }}
+            className="flex-1 h-14 rounded-2xl font-black transition-all active:scale-95 flex items-center justify-center gap-2 text-base shadow-xl border-2 border-white/20"
+          >
+            {isSending ? '발송 중...' : (photoCooldown > 0 && !!base64Image ? `📸 재장전 중... (${photoCooldown}s)` : '쿠콘팡! 쏘기 🚀')}
           </button>
         </div>
 
